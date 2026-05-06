@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information and roles",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "EMPLOYEE"] },
+        "photoURL": { "type": "string", "format": "uri" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Office": {
+      "title": "Office Submission",
+      "description": "Field data collection submission for a post office",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "governorate": { "type": "string" },
+        "postalArea": { "type": "string" },
+        "notes": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "photoURL": { "type": "string", "format": "uri" },
+        "inspectorId": { "type": "string" },
+        "inspectorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "governorate", "location", "inspectorId", "createdAt"]
+    },
+    "TrackingLog": {
+      "title": "Tracking Log",
+      "description": "Real-time location pulse from employees",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "location", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "App users"
+    },
+    "offices/{officeId}": {
+      "schema": "Office",
+      "description": "Collected office data"
+    },
+    "tracking_logs/{logId}": {
+      "schema": "TrackingLog",
+      "description": "GPS tracking logs"
+    }
+  }
+}

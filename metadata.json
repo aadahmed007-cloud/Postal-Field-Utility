@@ -1,0 +1,6 @@
+{
+  "name": "Postal Field Utility",
+  "description": "Professional field data collection and employee tracking system for Egypt Post, featuring real-time GPS tracking and offline-first submission.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": []
+}

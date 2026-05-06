@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "ADMIN") ||
+        request.auth.token.email == "aadahmed007@gmail.com"
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+             data.keys().size() <= 6 &&
+             data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 200 &&
+             data.role in ['ADMIN', 'EMPLOYEE'] &&
+             data.createdAt == request.time;
+    }
+
+    function isValidOffice(data) {
+      return data.keys().hasAll(['name', 'governorate', 'location', 'inspectorId', 'createdAt']) &&
+             data.name is string && data.name.size() <= 200 &&
+             data.governorate is string && data.governorate.size() <= 100 &&
+             data.location is map && data.location.lat is number && data.location.lng is number &&
+             data.inspectorId == request.auth.uid &&
+             data.createdAt == request.time;
+    }
+
+    function isValidTrackingLog(data) {
+      return data.keys().hasAll(['userId', 'location', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.location is map && data.location.lat is number && data.location.lng is number &&
+             data.timestamp == request.time;
+    }
+
+    // --- Matches ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (isAdmin() || request.auth.token.email == resource.data.email);
+      allow create: if isSignedIn() && isValidId(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && (
+                      (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL'])) ||
+                      (isAdmin())
+                    ) &&
+                    incoming().uid == existing().uid;
+      allow delete: if isAdmin();
+    }
+
+    match /offices/{officeId} {
+      allow get: if isSignedIn() && (isAdmin() || (resource != null && resource.data.inspectorId == request.auth.uid));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.inspectorId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(officeId) && isValidOffice(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /tracking_logs/{logId} {
+      allow get: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(logId) && isValidTrackingLog(incoming());
+      allow update, delete: if false; // Logs are immutable
+    }
+  }
+}
