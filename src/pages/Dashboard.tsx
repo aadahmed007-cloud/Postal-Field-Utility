@@ -150,6 +150,7 @@ export default function Dashboard() {
                 <tr>
                   <th className="p-4">رقم العملية</th>
                   <th className="p-4">المكتب</th>
+                  <th className="p-4">الموظف</th>
                   <th className="p-4">المحافظة</th>
                   <th className="p-4">التاريخ</th>
                   <th className="p-4 text-center">الحالة</th>
@@ -160,6 +161,7 @@ export default function Dashboard() {
                   <tr key={visit.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4 font-mono text-xs">#{visit.id.slice(0, 8)}</td>
                     <td className="p-4 font-bold">{visit.name}</td>
+                    <td className="p-4">{visit.inspectorName || '---'}</td>
                     <td className="p-4">{visit.governorate}</td>
                     <td className="p-4 text-slate-400">
                       {visit.createdAt?.toDate ? visit.createdAt.toDate().toLocaleDateString('ar-EG') : 'قيد المعالجة'}
@@ -182,6 +184,7 @@ export default function Dashboard() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h4 className="font-bold text-slate-800">{visit.name}</h4>
+                    <p className="text-[10px] text-green-700 font-bold">{visit.inspectorName}</p>
                     <p className="text-xs text-slate-400 font-mono">#{visit.id.slice(0, 8)}</p>
                   </div>
                   <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">

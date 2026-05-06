@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/errorHandlers';
-import { ArrowRight, Printer, CheckCircle2, MapPin, Calendar, User, Info, AlertTriangle, AlertCircle } from 'lucide-react';
+import { ArrowRight, Printer, CheckCircle2, MapPin, Calendar, User, Info, AlertTriangle, AlertCircle, Download } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export default function VisitDetail() {

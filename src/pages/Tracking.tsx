@@ -2,37 +2,54 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow, Polyline } from '@react-google-maps/api';
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import { collection, query, where, orderBy, onSnapshot, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/errorHandlers';
 import { MapPin, User, Search, AlertCircle, History } from 'lucide-react';
 
-const containerStyle = { width: '100%', height: 'calc(100vh - 128px)' };
+const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
+const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+
 const center = { lat: 30.0444, lng: 31.2357 }; // Cairo
+
+function MapHistoryPolyline({ path }: { path: any[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || path.length < 2) return;
+    const polyline = new google.maps.Polyline({
+      path,
+      strokeColor: '#15803d',
+      strokeOpacity: 0.8,
+      strokeWeight: 4,
+      geodesic: true,
+      map
+    });
+    return () => polyline.setMap(null);
+  }, [map, path]);
+  return null;
+}
 
 export default function Tracking() {
   const { user, role, loading: authLoading } = useAuth();
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
-  });
-
   const [activeStaff, setActiveStaff] = useState<any[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<any | null>(null);
   const [staffHistory, setStaffHistory] = useState<any[]>([]);
+  const [allStaffToday, setAllStaffToday] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading || !user || role !== 'ADMIN') return;
 
     const path = 'tracking_logs';
-    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
-    // Fetch latest pulses for all users
+    // Query for all logs today to identify active staff
     const q = query(
       collection(db, path),
-      where('timestamp', '>=', Timestamp.fromDate(fifteenMinsAgo)),
+      where('timestamp', '>=', Timestamp.fromDate(today)),
       orderBy('timestamp', 'desc')
     );
 
@@ -41,10 +58,19 @@ export default function Tracking() {
       snapshot.docs.forEach(doc => {
         const data = doc.data();
         if (!users[data.userId]) {
-          users[data.userId] = { id: doc.id, ...data };
+          users[data.userId] = { 
+            id: doc.id, 
+            ...data,
+            isOnline: data.timestamp?.toDate() > new Date(Date.now() - 15 * 60 * 1000)
+          };
         }
       });
-      setActiveStaff(Object.values(users));
+      const staffList = Object.values(users).sort((a, b) => b.timestamp - a.timestamp);
+      setAllStaffToday(staffList);
+      
+      // Update active (live) staff for markers
+      setActiveStaff(staffList.filter(s => s.isOnline));
+      
       setError(null);
     }, (err) => {
       setError("حدث خطأ في صلاحيات التتبع المباشر.");
@@ -77,74 +103,93 @@ export default function Tracking() {
 
   if (authLoading) return <div className="p-20 text-center font-['Cairo']">جاري التحميل...</div>;
 
+  if (!hasValidKey) {
+    return (
+      <Layout title="إعداد الخريطة">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-right font-['Cairo']" dir="rtl">
+          <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-slate-100 text-center">
+            <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <MapPin className="w-10 h-10 text-green-700" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">مطلوب مفتاح Google Maps API</h2>
+            <div className="space-y-6 text-slate-600 text-sm leading-relaxed">
+              <p>لتفعيل ميزة التتبع المباشر، يرجى اتباع الخطوات التالية:</p>
+              <ol className="text-right space-y-4 px-4">
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold text-xs">١</span>
+                  <span>احصل على مفتاح من <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener" className="text-green-700 font-bold underline">منصة Google Cloud</a></span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold text-xs">٢</span>
+                  <span>افتح <strong>Settings</strong> (أيقونة الترس في الزاوية العلوية)</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold text-xs">٣</span>
+                  <span>اختر <strong>Secrets</strong> وأضف مفتاحاً باسم <code>GOOGLE_MAPS_PLATFORM_KEY</code></span>
+                </li>
+              </ol>
+              <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs">
+                <strong>تنبيه:</strong> تأكد من تفعيل "Maps JavaScript API" في حسابك لتجنب خطأ ApiProjectMapError.
+              </div>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout title="التتبع المباشر">
-      <div className="relative h-[calc(100vh-160px)] -m-6 md:-m-8 overflow-hidden">
+      <div className="relative h-[calc(100vh-160px)] -m-6 md:-m-8 overflow-hidden font-['Cairo']">
         {error && (
-          <div className="absolute top-4 left-4 right-4 z-50 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700 shadow-lg">
+          <div className="absolute top-4 left-4 right-4 z-50 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700 shadow-lg" dir="rtl">
             <AlertCircle className="w-5 h-5" />
             <p className="text-sm font-bold">{error}</p>
           </div>
         )}
-        {loadError && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-slate-50">
-            <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-red-100 text-center">
-              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertCircle className="w-8 h-8 text-red-600" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">خطأ في تهيئة الخريطة</h3>
-              <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-                يبدو أن هناك مشكلة في مفتاح Google Maps API. يرجى التأكد من تفعيل "Maps JavaScript API" في منصة Google Cloud.
-              </p>
-              <div className="text-[10px] bg-slate-50 p-3 rounded-lg text-slate-400 font-mono break-all mb-6">
-                {loadError.message}
-              </div>
-              <button 
-                onClick={() => window.location.reload()}
-                className="w-full bg-green-700 text-white py-3 rounded-xl font-bold hover:bg-green-800 transition-all font-['Cairo']"
-              >
-                إعادة تحميل الصفحة
-              </button>
-            </div>
-          </div>
-        )}
-        {isLoaded ? (
-          <GoogleMap
-            mapContainerStyle={containerStyle}
-            center={center}
-            zoom={12}
-            options={{
-              styles: mapStyle,
-              disableDefaultUI: true,
-              zoomControl: true
-            }}
+
+        <APIProvider apiKey={API_KEY} version="weekly" language="ar" region="EG">
+          <Map
+            defaultCenter={center}
+            defaultZoom={12}
+            mapId="9dc2c1c3fcd1e1a5" // Placeholder Map ID for Advanced Markers
+            disableDefaultUI={true}
+            zoomControl={true}
+            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+            style={{ width: '100%', height: '100%' }}
           >
             {activeStaff.map((staff) => (
-              <Marker
+              <AdvancedMarker
                 key={staff.userId}
                 position={staff.location}
                 onClick={() => {
                   setSelectedStaff(staff);
                   fetchStaffHistory(staff.userId);
                 }}
-                icon={{
-                  url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
-                  scaledSize: new window.google.maps.Size(40, 40)
-                }}
-              />
+              >
+                <Pin background="#15803d" borderColor="#ffffff" glyphColor="#ffffff" scale={1.2} />
+              </AdvancedMarker>
             ))}
 
-            {staffHistory.length > 1 && (
-              <Polyline
-                path={staffHistory}
-                options={{
-                  strokeColor: '#15803d',
-                  strokeOpacity: 0.8,
-                  strokeWeight: 4,
-                  geodesic: true,
-                }}
-              />
+            {selectedStaff && !activeStaff.find(s => s.userId === selectedStaff.userId) && (
+              <AdvancedMarker
+                position={selectedStaff.location}
+                onClick={() => fetchStaffHistory(selectedStaff.userId)}
+              >
+                <Pin background="#64748b" borderColor="#ffffff" glyphColor="#ffffff" scale={1.1} />
+              </AdvancedMarker>
             )}
+
+            {staffHistory.length > 0 && (
+              <AdvancedMarker position={staffHistory[0]}>
+                 <Pin background="#0ea5e9" borderColor="#ffffff" glyphColor="#ffffff" scale={0.8} />
+                 <InfoWindow position={staffHistory[0]} headerDisabled>
+                    <div className="text-[9px] font-bold py-0.5 px-1">نقطة البداية اليوم</div>
+                 </InfoWindow>
+              </AdvancedMarker>
+            )}
+
+            <MapHistoryPolyline path={staffHistory} />
 
             {selectedStaff && (
               <InfoWindow
@@ -154,7 +199,7 @@ export default function Tracking() {
                   setStaffHistory([]);
                 }}
               >
-                <div className="p-2 text-right dir-rtl font-['Cairo'] max-w-[200px]">
+                <div className="p-2 text-right dir-rtl font-['Cairo'] max-w-[200px]" dir="rtl">
                   <h3 className="font-bold text-green-800">{selectedStaff.userName}</h3>
                   <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500">
                      <History className="w-3 h-3" />
@@ -164,15 +209,11 @@ export default function Tracking() {
                 </div>
               </InfoWindow>
             )}
-          </GoogleMap>
-        ) : (
-          <div className="flex items-center justify-center h-full bg-slate-100 text-slate-400">
-             جاري تحميل الخريطة...
-          </div>
-        )}
+          </Map>
+        </APIProvider>
 
         {/* Floating Panel */}
-        <div className="absolute top-6 right-6 bottom-6 w-80 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl flex flex-col overflow-hidden hidden md:flex">
+        <div className="absolute top-6 right-6 bottom-6 w-80 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl flex flex-col overflow-hidden hidden md:flex" dir="rtl">
           <div className="p-4 border-b border-slate-100">
             <div className="flex items-center gap-2 mb-4">
                <MapPin className="text-green-700 w-5 h-5" />
@@ -181,14 +222,16 @@ export default function Tracking() {
             <div className="relative">
               <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" />
               <input 
-                className="w-full pr-10 pl-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" 
-                placeholder="بحث..." 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pr-10 pl-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-700/20" 
+                placeholder="بحث باسم الموظف..." 
               />
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-             {activeStaff.map(staff => (
+             {allStaffToday.filter(s => s.userName?.toLowerCase().includes(searchTerm.toLowerCase())).map(staff => (
                <button 
                  key={staff.userId}
                  onClick={() => {
@@ -200,21 +243,34 @@ export default function Tracking() {
                  }`}
                >
                   <div className="relative">
-                    <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center">
-                       <User className="w-6 h-6 text-slate-400" />
+                    <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden">
+                       {staff.photoURL ? (
+                         <img src={staff.photoURL} className="w-full h-full object-cover" alt="" />
+                       ) : (
+                         <User className="w-6 h-6 text-slate-400" />
+                       )}
                     </div>
-                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                    {staff.isOnline && (
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-slate-700 truncate">{staff.userName}</div>
-                    <div className="text-[10px] text-slate-400 truncate">
-                      {staff.timestamp?.toDate().toLocaleTimeString('ar-EG')}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-bold text-slate-700 truncate text-xs">{staff.userName}</div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+                        staff.isOnline ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {staff.isOnline ? 'متصل' : 'غير متصل'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                      آخر تواجد: {staff.timestamp?.toDate().toLocaleTimeString('ar-EG')}
                     </div>
                   </div>
                </button>
              ))}
-             {activeStaff.length === 0 && (
-               <div className="text-center py-10 text-slate-400 text-sm">لا يوجد موظفين نشطين حالياً</div>
+             {allStaffToday.length === 0 && (
+               <div className="text-center py-10 text-slate-400 text-sm">لا يوجد موظفين نشطين اليوم</div>
              )}
           </div>
         </div>
@@ -222,11 +278,3 @@ export default function Tracking() {
     </Layout>
   );
 }
-
-const mapStyle = [
-  { "featureType": "administrative", "elementType": "labels.text.fill", "stylers": [{ "color": "#444444" }] },
-  { "featureType": "landscape", "elementType": "all", "stylers": [{ "color": "#f2f2f2" }] },
-  { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-  { "featureType": "road", "elementType": "all", "stylers": [{ "saturation": -100 }, { "lightness": 45 }] },
-  { "featureType": "water", "elementType": "all", "stylers": [{ "color": "#cae6f0" }, { "visibility": "on" }] }
-];
