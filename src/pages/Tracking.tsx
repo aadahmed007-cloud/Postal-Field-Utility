@@ -8,8 +8,8 @@ import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/errorHandlers';
 import { MapPin, User, Search, AlertCircle, History } from 'lucide-react';
 
-const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
-const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
+const API_KEY = (process.env.GOOGLE_MAPS_PLATFORM_KEY || '').trim();
+const hasValidKey = Boolean(API_KEY) && API_KEY.length > 5 && API_KEY !== 'YOUR_API_KEY';
 
 const center = { lat: 30.0444, lng: 31.2357 }; // Cairo
 
@@ -125,11 +125,16 @@ export default function Tracking() {
                 </li>
                 <li className="flex gap-3">
                   <span className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold text-xs">٣</span>
-                  <span>اختر <strong>Secrets</strong> وأضف مفتاحاً باسم <code>GOOGLE_MAPS_PLATFORM_KEY</code></span>
+                  <span>اختر <strong>Secrets</strong> وأضف مفتاحاً باسم <code>VITE_GOOGLE_MAPS_API_KEY</code></span>
                 </li>
               </ol>
               <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs">
-                <strong>تنبيه:</strong> تأكد من تفعيل "Maps JavaScript API" في حسابك لتجنب خطأ ApiProjectMapError.
+                <strong>تنبيهات هامة:</strong>
+                <ul className="list-disc list-inside mr-4 mt-1 space-y-1">
+                  <li>تأكد من تفعيل "Maps JavaScript API" في حسابك.</li>
+                  <li>إذا ظهر خطأ <strong>InvalidKeyMapError</strong>، فهذا يعني أن المفتاح الذي أدخلته غير صحيح أو تم حذفه.</li>
+                  <li>تأكد من عدم وجود مسافات زائدة حول المفتاح عند إضافته في Secrets.</li>
+                </ul>
               </div>
             </div>
           </div>
