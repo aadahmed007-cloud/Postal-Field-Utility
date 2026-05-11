@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { auth } from '../lib/firebase';
 import { 
   LogOut, 
@@ -24,6 +24,7 @@ import { useTracking } from '../hooks/useTracking';
 export default function Layout({ children, title }: { children: React.ReactNode, title?: string }) {
   const { user, role } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   // Initialize background tracking for employees
@@ -45,6 +46,11 @@ export default function Layout({ children, title }: { children: React.ReactNode,
   ];
 
   const filteredMenuItems = menuItems.filter(item => !item.roles || item.roles.includes(role || ''));
+
+  const isActive = (path: string) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-['Cairo']" dir="rtl">
@@ -90,7 +96,11 @@ export default function Layout({ children, title }: { children: React.ReactNode,
                   key={item.id}
                   to={item.path} 
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-600 hover:text-green-700 hover:bg-green-50 transition-colors"
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive(item.path) 
+                    ? 'text-green-700 bg-green-50' 
+                    : 'text-slate-600 hover:text-green-700 hover:bg-green-50'
+                  }`}
                 >
                   <item.icon className="w-5 h-5" />
                   <span className="font-semibold text-sm">{item.label}</span>
@@ -120,7 +130,11 @@ export default function Layout({ children, title }: { children: React.ReactNode,
             <Link 
               key={item.id}
               to={item.path} 
-              className="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-600 hover:text-green-700 hover:bg-green-50 transition-colors font-['Cairo']"
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-['Cairo'] ${
+                isActive(item.path)
+                ? 'text-green-700 bg-green-50'
+                : 'text-slate-600 hover:text-green-700 hover:bg-green-50'
+              }`}
             >
               <item.icon className="w-5 h-5" />
               <span className="font-semibold text-sm">{item.label}</span>
@@ -176,24 +190,38 @@ export default function Layout({ children, title }: { children: React.ReactNode,
         </div>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm h-16 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 shadow-xl flex items-center justify-around px-4 z-50">
-          <Link to="/" className="flex flex-col items-center gap-1 text-slate-400 hover:text-green-700 transition-all">
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="text-[10px] font-bold">الرئيسية</span>
-          </Link>
-          {(role === 'EMPLOYEE' || role === 'ADMIN') && (
-            <Link to="/new-visit" className="flex flex-col items-center gap-1 -translate-y-4 bg-green-700 text-white p-3 rounded-2xl shadow-lg shadow-green-200 hover:scale-110 active:scale-95 transition-all">
-              <Plus className="w-6 h-6" />
+        <nav className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 w-[95%] max-w-sm h-16 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl flex items-center justify-between px-6 z-50">
+          <div className="flex flex-1 justify-around items-center">
+            <Link to="/" className={`flex flex-col items-center gap-0.5 transition-all ${isActive('/') ? 'text-green-700' : 'text-slate-400 hover:text-green-700'}`}>
+              <LayoutDashboard className="w-5 h-5" />
+              <span className="text-[8px] font-bold">الرئيسية</span>
             </Link>
+            
+            <Link to="/visits" className={`flex flex-col items-center gap-0.5 transition-all ${isActive('/visits') ? 'text-green-700' : 'text-slate-400 hover:text-green-700'}`}>
+              <ClipboardList className="w-5 h-5" />
+              <span className="text-[8px] font-bold">الزيارات</span>
+            </Link>
+          </div>
+
+          {(role === 'EMPLOYEE' || role === 'ADMIN') && (
+            <div className="relative -mt-8 flex justify-center items-center w-16">
+              <Link to="/new-visit" className="flex items-center justify-center bg-green-700 text-white w-14 h-14 rounded-2xl shadow-lg shadow-green-200 hover:scale-110 active:scale-95 transition-all border-4 border-white">
+                <Plus className="w-8 h-8" />
+              </Link>
+            </div>
           )}
-          <Link to="/visits" className="flex flex-col items-center gap-1 text-slate-400 hover:text-green-700 transition-all">
-            <ClipboardList className="w-5 h-5" />
-            <span className="text-[10px] font-bold">الزيارات</span>
-          </Link>
-          <Link to="/settings" className="flex flex-col items-center gap-1 text-slate-400 hover:text-green-700 transition-all">
-            <SettingsIcon className="w-5 h-5" />
-            <span className="text-[10px] font-bold">الإعدادات</span>
-          </Link>
+
+          <div className="flex flex-1 justify-around items-center">
+            <Link to="/gallery" className={`flex flex-col items-center gap-0.5 transition-all ${isActive('/gallery') ? 'text-green-700' : 'text-slate-400 hover:text-green-700'}`}>
+              <ImageIcon className="w-5 h-5" />
+              <span className="text-[8px] font-bold">المعرض</span>
+            </Link>
+            
+            <Link to="/settings" className={`flex flex-col items-center gap-0.5 transition-all ${isActive('/settings') ? 'text-green-700' : 'text-slate-400 hover:text-green-700'}`}>
+              <SettingsIcon className="w-5 h-5" />
+              <span className="text-[8px] font-bold">الإعدادات</span>
+            </Link>
+          </div>
         </nav>
       </main>
     </div>

@@ -147,18 +147,18 @@ export default function Dashboard() {
           </div>
         )}
         
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 sm:gap-0">
-          <div className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-800">أهلاً بك، {user?.displayName}</h1>
-            <p className="text-slate-500 text-sm sm:text-base">إليك ملخص سريع لأداء اليوم.</p>
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold text-slate-800 font-['Cairo']">أهلاً بك، {user?.displayName} 👋</h1>
+            <p className="text-slate-500 font-medium font-['Cairo']">إليك ملخص شامل لآخر نشاطات التفتيش والرقابة الميدانية اليوم.</p>
           </div>
           {(role === 'EMPLOYEE' || role === 'ADMIN') && (
             <Link 
               to="/new-visit" 
-              className="w-full sm:w-auto bg-green-700 text-white px-6 py-3 rounded-xl font-bold hover:bg-green-800 transition-all shadow-md flex items-center justify-center gap-2"
+              className="w-full sm:w-auto bg-green-700 text-white px-8 py-4 rounded-2xl font-bold hover:bg-green-800 transition-all shadow-lg shadow-green-100 flex items-center justify-center gap-2 font-['Cairo']"
             >
               <Plus className="w-5 h-5" />
-              زيارة جديدة
+              زيارة ميدانية جديدة
             </Link>
           )}
         </header>
@@ -170,7 +170,8 @@ export default function Dashboard() {
             value={stats.totalVisits.toString()} 
             icon={<ClipboardList className="w-6 h-6 sm:w-8 sm:h-8" />} 
             trend="+12%" 
-            color="bg-green-700" 
+            color="bg-slate-900" 
+            link="/visits"
           />
           <StatCard 
             title="نقاط التميز" 
@@ -178,6 +179,7 @@ export default function Dashboard() {
             icon={<TrendingUp className="w-6 h-6 sm:w-8 sm:h-8" />} 
             trend="تحسن" 
             color="bg-emerald-600" 
+            link="/visits"
           />
           <StatCard 
             title="سجلات السلبيات" 
@@ -185,13 +187,15 @@ export default function Dashboard() {
             icon={<AlertCircle className="w-6 h-6 sm:w-8 sm:h-8" />} 
             trend="تحتاج تدخل" 
             color="bg-red-600" 
+            link="/visits"
           />
           <StatCard 
             title="الموظفين الآن" 
             value={role === 'ADMIN' ? stats.activeStaff.toString() : "نشط"} 
             icon={<Users className="w-6 h-6 sm:w-8 sm:h-8" />} 
             trend={role === 'ADMIN' ? "متواجدين" : "مستقر"} 
-            color="bg-slate-700" 
+            color="bg-green-700" 
+            link="/staff"
           />
         </div>
 
@@ -395,12 +399,9 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ title, value, icon, trend, color }: any) {
-  return (
-    <motion.div 
-      whileHover={{ y: -4 }}
-      className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden flex flex-col"
-    >
+function StatCard({ title, value, icon, trend, color, link }: any) {
+  const CardContent = (
+    <>
       <div className={`absolute top-0 right-0 w-1.5 h-full ${color}`}></div>
       <div className="flex justify-between items-start mb-4">
         <div className={`p-4 rounded-xl ${color} text-white`}>
@@ -415,6 +416,19 @@ function StatCard({ title, value, icon, trend, color }: any) {
       </div>
       <h3 className="text-slate-500 font-bold text-sm mb-1">{title}</h3>
       <p className="text-3xl font-bold text-slate-800">{value}</p>
+    </>
+  );
+
+  return (
+    <motion.div 
+      whileHover={{ y: -4 }}
+      className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden flex flex-col h-full"
+    >
+      {link ? (
+        <Link to={link}>
+          {CardContent}
+        </Link>
+      ) : CardContent}
     </motion.div>
   );
 }
