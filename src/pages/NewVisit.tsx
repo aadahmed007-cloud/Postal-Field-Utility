@@ -41,6 +41,26 @@ export default function NewVisit() {
     notes: '',
   });
 
+  const OFFLINE_DRAFT_KEY = 'visit_draft_data';
+
+  // Load draft on mount
+  useEffect(() => {
+    const draft = localStorage.getItem(OFFLINE_DRAFT_KEY);
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        if (Object.keys(parsed).length > 0 && confirm('وجدنا مسودة غير مكتملة. هل ترغب في استرجاعها؟')) {
+          setFormData(parsed);
+        }
+      } catch(e) {}
+    }
+  }, []);
+
+  // Save to draft on change
+  useEffect(() => {
+    localStorage.setItem(OFFLINE_DRAFT_KEY, JSON.stringify(formData));
+  }, [formData]);
+
   useEffect(() => {
     // Get GPS location
     if (navigator.geolocation) {
@@ -112,6 +132,7 @@ export default function NewVisit() {
         createdAt: serverTimestamp(),
       });
 
+      localStorage.removeItem(OFFLINE_DRAFT_KEY);
       setSubmitted(true);
       setTimeout(() => navigate('/'), 2000);
     } catch (error) {
@@ -457,7 +478,27 @@ export default function NewVisit() {
                 </div>
                 
                 <h2 className="text-2xl font-black text-slate-800 mb-2">تأكيد إرسال التقرير</h2>
-                <p className="text-slate-500 text-sm leading-relaxed mb-8">
+                <div className="bg-slate-50 rounded-2xl p-4 mb-6 space-y-2 text-sm">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                    <span className="text-slate-400">اسم المكتب:</span>
+                    <span className="font-bold text-slate-700">{formData.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                    <span className="text-slate-400">المحافظة:</span>
+                    <span className="font-bold text-slate-700">{formData.governorate}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                    <span className="text-slate-400">النوع:</span>
+                    <span className="font-bold text-slate-700">{formData.officeType}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">الصور المرفقة:</span>
+                    <span className={`font-bold ${tempImageUrl ? 'text-green-600' : 'text-red-600'}`}>
+                      {tempImageUrl ? 'متوفرة' : 'غير متوفرة'}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-slate-500 text-[11px] leading-relaxed mb-8">
                   هل أنت متأكد من صحة كافة البيانات المدخلة؟ لا يمكن تعديل التقرير بعد إرساله. سيتم تسجيل موقعك الجغرافي الحالي وتاريخ الزيارة تلقائياً.
                 </p>
                 

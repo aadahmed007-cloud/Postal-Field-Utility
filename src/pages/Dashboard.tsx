@@ -1,18 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/errorHandlers';
-import { Plus, Users, MapPin, ClipboardList, TrendingUp, AlertCircle } from 'lucide-react';
+import { Plus, Users, MapPin, ClipboardList, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+
+const COLORS = [
+  '#0f172a', // Slate 900
+  '#15803d', // Green 700
+  '#1d4ed8', // Blue 700
+  '#b91c1c', // Red 700
+  '#7c3aed', // Violet 600
+  '#0d9488', // Teal 600
+  '#ea580c', // Orange 600
+  '#0891b2', // Cyan 600
+  '#4338ca', // Indigo 600
+  '#c026d3', // Fuchsia 600
+];
 
 export default function Dashboard() {
   const { user, role, loading: authLoading } = useAuth();
   const [stats, setStats] = useState({ totalVisits: 0, activeStaff: 0, coverage: '14/27', positivePoints: 0, negativePoints: 0 });
   const [recentVisits, setRecentVisits] = useState<any[]>([]);
+  const [allVisits, setAllVisits] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const countNotes = (text?: string) => {
+    if (!text) return 0;
+    return text.split('\n').filter(line => line.trim().length > 2).length || 1;
+  };
 
   useEffect(() => {
     if (authLoading || !user || !role) return;
@@ -26,17 +46,19 @@ export default function Dashboard() {
     );
 
     const unsubscribeVisits = onSnapshot(visitsQuery, (snapshot) => {
-      const allVisits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      const visits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      setAllVisits(visits);
       
       // Calculate stats
       let posCount = 0;
       let negCount = 0;
-      allVisits.forEach(v => {
-        if (v.positiveNotes) posCount++;
-        if (v.negativeNotes) negCount++;
+
+      visits.forEach(v => {
+        posCount += countNotes(v.positiveNotes);
+        negCount += countNotes(v.negativeNotes);
       });
 
-      setRecentVisits(allVisits.slice(0, 5));
+      setRecentVisits(visits.slice(0, 5));
       setStats(prev => ({ 
         ...prev, 
         totalVisits: snapshot.size,
@@ -71,6 +93,45 @@ export default function Dashboard() {
       unsubscribeTracking();
     };
   }, [user, role, authLoading]);
+
+  const governorateStats = useMemo(() => {
+    const stats: Record<string, { total: number, approved: number, completed: number }> = {};
+    allVisits.forEach(v => {
+      if (v.governorate) {
+        if (!stats[v.governorate]) {
+          stats[v.governorate] = { total: 0, approved: 0, completed: 0 };
+        }
+        stats[v.governorate].total += 1;
+        if (v.isApproved) stats[v.governorate].approved += 1;
+        
+        const hasPhoto = !!v.photoURL;
+        const hasNotes = !!(v.positiveNotes || v.negativeNotes || v.notes);
+        if (hasPhoto && hasNotes) stats[v.governorate].completed += 1;
+      }
+    });
+
+    return Object.entries(stats)
+      .map(([name, data]) => ({ 
+        name, 
+        total: data.total,
+        approved: data.approved,
+        completeRate: Math.round((data.approved / data.total) * 100),
+        visitCount: data.total
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [allVisits]);
+
+  const sectorStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    allVisits.forEach(v => {
+      if (v.sector) {
+        stats[v.sector] = (stats[v.sector] || 0) + 1;
+      }
+    });
+    return Object.entries(stats)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [allVisits]);
 
   if (authLoading) {
     return <div className="flex items-center justify-center h-screen bg-slate-50 font-['Cairo']">جاري التحميل...</div>;
@@ -134,6 +195,85 @@ export default function Dashboard() {
           />
         </div>
 
+        {/* Charts Section */}
+        {role === 'ADMIN' && governorateStats.length > 0 && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col items-center">
+                  <div className="flex justify-between items-center w-full mb-6">
+                     <h3 className="text-lg font-bold text-slate-800 font-['Cairo']">تحليل الزيارات حسب المحافظة</h3>
+                     <span className="text-xs text-slate-400">العدد والاعتماد</span>
+                  </div>
+                  <div className="w-full h-64" dir="ltr">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={governorateStats} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={10} />
+                        <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
+                        <RechartsTooltip cursor={{ fill: '#f1f5f9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Bar dataKey="total" name="إجمالي الزيارات" fill="#15803d" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="approved" name="الزيارات المعتمدة" fill="#4ade80" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+               </div>
+               
+               <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col items-center">
+                  <div className="flex justify-between items-center w-full mb-6">
+                     <h3 className="text-lg font-bold text-slate-800 font-['Cairo']">توزيع الزيارات حسب القطاع</h3>
+                     <span className="text-xs text-slate-400">النوع الاجتماعي/الوظيفي</span>
+                  </div>
+                  <div className="w-full h-64" dir="ltr">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={sectorStats}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={100}
+                          innerRadius={60}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {sectorStats.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+               </div>
+            </div>
+
+            {/* Completion Rates Progress */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+               <h3 className="text-lg font-bold text-slate-800 mb-6 text-right font-['Cairo']">نسبة اعتماد الزيارات لكل محافظة</h3>
+               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                  {governorateStats.map((gov) => (
+                    <div key={gov.name} className="space-y-2">
+                       <div className="flex justify-between items-center text-sm">
+                          <span className="font-bold text-slate-700">{gov.name}</span>
+                          <span className="text-green-700 font-bold">{gov.completeRate}%</span>
+                       </div>
+                       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            whileInView={{ width: `${gov.completeRate}%` }}
+                            transition={{ duration: 1, ease: "easeOut" }}
+                            className="h-full bg-green-600 rounded-full"
+                          />
+                       </div>
+                       <p className="text-[10px] text-slate-400">اعتماد {gov.approved} من {gov.total} زيارة</p>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          </div>
+        )}
+
         {/* Recent Visits */}
         <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-4 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
@@ -151,9 +291,11 @@ export default function Dashboard() {
                   <th className="p-4">رقم العملية</th>
                   <th className="p-4">المكتب</th>
                   <th className="p-4">الموظف</th>
+                  <th className="p-4 text-center">التقييم</th>
                   <th className="p-4">المحافظة</th>
                   <th className="p-4">التاريخ</th>
                   <th className="p-4 text-center">الحالة</th>
+                  <th className="p-4"></th>
                 </tr>
               </thead>
               <tbody className="text-sm text-slate-700 divide-y divide-slate-100">
@@ -162,14 +304,38 @@ export default function Dashboard() {
                     <td className="p-4 font-mono text-xs">#{visit.id.slice(0, 8)}</td>
                     <td className="p-4 font-bold">{visit.name}</td>
                     <td className="p-4">{visit.inspectorName || '---'}</td>
+                    <td className="p-4 text-center">
+                      <div className="flex justify-center gap-2">
+                        {visit.positiveNotes && (
+                          <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100" title="يوجد ملاحظات إيجابية">
+                            <TrendingUp className="w-3 h-3" />
+                            <span className="text-[10px] font-bold">{countNotes(visit.positiveNotes)}</span>
+                          </div>
+                        )}
+                        {visit.negativeNotes && (
+                          <div className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100" title="يوجد ملاحظات سلبية">
+                            <TrendingDown className="w-3 h-3" />
+                            <span className="text-[10px] font-bold">{countNotes(visit.negativeNotes)}</span>
+                          </div>
+                        )}
+                        {!visit.positiveNotes && !visit.negativeNotes && (
+                           <span className="text-slate-300 text-xs">-</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-4">{visit.governorate}</td>
                     <td className="p-4 text-slate-400">
                       {visit.createdAt?.toDate ? visit.createdAt.toDate().toLocaleDateString('ar-EG') : 'قيد المعالجة'}
                     </td>
                     <td className="p-4 text-center">
-                      <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">
-                        مكتمل
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold border ${visit.isApproved ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-green-100 text-green-700 border-green-200'}`}>
+                        {visit.isApproved ? 'معتمدة' : 'مكتمل'}
                       </span>
+                    </td>
+                    <td className="p-4 text-center">
+                       <Link to={`/visit/${visit.id}`} className="text-green-700 font-bold text-xs hover:underline bg-green-50 px-3 py-1.5 rounded-lg">
+                          التفاصيل
+                       </Link>
                     </td>
                   </tr>
                 ))}
@@ -187,9 +353,25 @@ export default function Dashboard() {
                     <p className="text-[10px] text-green-700 font-bold">{visit.inspectorName}</p>
                     <p className="text-xs text-slate-400 font-mono">#{visit.id.slice(0, 8)}</p>
                   </div>
-                  <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700 border border-green-200">
-                    مكتمل
-                  </span>
+                  <div className="flex flex-col gap-2 items-end">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold border ${visit.isApproved ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-green-100 text-green-700 border-green-200'}`}>
+                      {visit.isApproved ? 'معتمدة' : 'مكتمل'}
+                    </span>
+                    <div className="flex justify-end gap-1">
+                      {visit.positiveNotes && (
+                        <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                          <TrendingUp className="w-3 h-3" />
+                          <span className="text-[10px] font-bold">{countNotes(visit.positiveNotes)}</span>
+                        </div>
+                      )}
+                      {visit.negativeNotes && (
+                        <div className="flex items-center gap-1 text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                          <TrendingDown className="w-3 h-3" />
+                          <span className="text-[10px] font-bold">{countNotes(visit.negativeNotes)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex justify-between text-xs items-center">
                    <div className="flex items-center gap-1 text-slate-500">

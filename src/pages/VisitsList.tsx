@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../hooks/useAuth';
 import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
@@ -6,11 +6,14 @@ import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/errorHandlers';
 import { MapPin, Calendar, Search, Filter, FileText, Download, AlertCircle, ClipboardList } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 
 export default function VisitsList() {
   const { user, role, loading: authLoading } = useAuth();
   const [visits, setVisits] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedGov, setSelectedGov] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,9 +37,74 @@ export default function VisitsList() {
     return unsubscribe;
   }, [user, role, authLoading]);
 
-  const filteredVisits = visits.filter(v => 
-    v.name.includes(searchTerm) || v.governorate.includes(searchTerm) || v.inspectorName?.includes(searchTerm) || v.sector?.includes(searchTerm)
-  );
+  const governorates = useMemo(() => {
+    const govs = new Set(visits.map(v => v.governorate).filter(Boolean));
+    return Array.from(govs);
+  }, [visits]);
+
+  const getVisitStatusKey = (visit: any) => {
+    if (visit.isApproved) return 'approved';
+    const hasPhoto = !!visit.photoURL;
+    const hasNotes = !!(visit.positiveNotes || visit.negativeNotes || visit.notes);
+    if (hasPhoto && hasNotes) return 'completed';
+    if (hasPhoto || hasNotes) return 'in_progress';
+    return 'pending';
+  };
+
+  const getVisitStatus = (visit: any) => {
+    const key = getVisitStatusKey(visit);
+    switch (key) {
+      case 'approved': return { label: 'معتمدة', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+      case 'completed': return { label: 'مكتملة', color: 'bg-green-50 text-green-700 border-green-100' };
+      case 'in_progress': return { label: 'قيد التنفيذ', color: 'bg-amber-50 text-amber-700 border-amber-100' };
+      default: return { label: 'معلقة', color: 'bg-slate-50 text-slate-500 border-slate-200' };
+    }
+  };
+
+  const filteredVisits = visits.filter(v => {
+    const matchesSearch = v.name.includes(searchTerm) || v.governorate.includes(searchTerm) || v.inspectorName?.includes(searchTerm) || v.sector?.includes(searchTerm);
+    const matchesGov = selectedGov === '' || v.governorate === selectedGov;
+    const matchesStatus = selectedStatus === '' || getVisitStatusKey(v) === selectedStatus;
+    
+    return matchesSearch && matchesGov && matchesStatus;
+  });
+
+  const exportToExcel = () => {
+    const dataToExport = filteredVisits.map(v => ({
+      'المكتب': v.name || '',
+      'المفتش': v.inspectorName || '',
+      'المحافظة': v.governorate || '',
+      'القطاع': v.sector || '',
+      'العنوان': v.address || '',
+      'دقيق العرض (lat)': v.location?.lat || '',
+      'دقيق الطول (lng)': v.location?.lng || '',
+      'ملاحظات إيجابية': v.positiveNotes || '',
+      'ملاحظات سلبية': v.negativeNotes || '',
+      'الحالة الجاهزية': v.isApproved ? 'معتمدة' : 'مسجلة',
+      'تاريخ الزيارة': v.createdAt?.toDate?.() ? v.createdAt.toDate().toLocaleDateString('ar-EG') : ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    
+    // Auto-size columns slightly
+    worksheet['!cols'] = [
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 30 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 40 },
+      { wch: 40 },
+      { wch: 15 },
+      { wch: 15 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "الزيارات");
+    XLSX.writeFile(workbook, `visits-report-${new Date().getTime()}.xlsx`);
+  };
 
   if (authLoading) return <div className="p-20 text-center font-['Cairo']">جاري التحميل...</div>;
 
@@ -109,7 +177,9 @@ export default function VisitsList() {
                 <Download className="w-4 h-4" />
                 تصدير HTML
              </button>
-             <button className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-green-700 rounded-xl text-xs font-bold text-white hover:bg-green-800 transition-all shadow-md">
+             <button 
+                onClick={exportToExcel}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-green-700 rounded-xl text-xs font-bold text-white hover:bg-green-800 transition-all shadow-md">
                 تصدير Excel
              </button>
           </div>
@@ -122,8 +192,8 @@ export default function VisitsList() {
               <h2 className="font-bold">فلاتر متقدمة</h2>
            </div>
            
-           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="space-y-1.5">
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5 border-l border-slate-100 pl-4">
                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">البحث العام</label>
                  <div className="relative">
                     <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -131,9 +201,36 @@ export default function VisitsList() {
                        value={searchTerm}
                        onChange={e => setSearchTerm(e.target.value)}
                        className="w-full pr-10 pl-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm transition-all focus:ring-2 focus:ring-green-700/20 focus:border-green-700 outline-none" 
-                       placeholder="ابحث بالاسم، المحافظة..." 
+                       placeholder="ابحث بالاسم، الموظف..." 
                     />
                  </div>
+              </div>
+              <div className="space-y-1.5 border-l border-slate-100 pl-4">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">المحافظة</label>
+                 <select 
+                    value={selectedGov}
+                    onChange={e => setSelectedGov(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm transition-all focus:ring-2 focus:ring-green-700/20 focus:border-green-700 outline-none"
+                 >
+                    <option value="">الكل</option>
+                    {governorates.map((gov: string) => (
+                      <option key={gov} value={gov}>{gov}</option>
+                    ))}
+                 </select>
+              </div>
+              <div className="space-y-1.5">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">الحالة</label>
+                 <select 
+                    value={selectedStatus}
+                    onChange={e => setSelectedStatus(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm transition-all focus:ring-2 focus:ring-green-700/20 focus:border-green-700 outline-none"
+                 >
+                    <option value="">الكل</option>
+                    <option value="approved">معتمدة</option>
+                    <option value="completed">مكتملة</option>
+                    <option value="in_progress">قيد التنفيذ</option>
+                    <option value="pending">معلقة</option>
+                 </select>
               </div>
            </div>
         </section>
@@ -175,9 +272,7 @@ export default function VisitsList() {
                            {visit.createdAt?.toDate?.() ? visit.createdAt.toDate().toLocaleDateString('ar-EG') : 'قيد المعالجة'}
                         </td>
                         <td className="py-4 px-6">
-                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-green-50 text-green-700 border border-green-100">
-                               مكتملة
-                           </span>
+                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getVisitStatus(visit).color}`}>{getVisitStatus(visit).label}</span>
                         </td>
                         <td className="py-4 px-6 text-center">
                            <Link to={`/visit/${visit.id}`} className="p-2 hover:bg-green-50 rounded-lg inline-flex text-green-700 transition-colors">
@@ -204,8 +299,8 @@ export default function VisitsList() {
                           <span className="text-[10px] text-slate-400 font-bold block mt-1">{visit.inspectorName}</span>
                         </div>
                       </div>
-                      <span className="px-2.5 py-1 rounded-full text-[9px] font-bold bg-green-50 text-green-700 border border-green-100">
-                        مكتملة
+                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold border ${getVisitStatus(visit).color}`}>
+                        {getVisitStatus(visit).label}
                       </span>
                    </div>
                    
@@ -236,3 +331,4 @@ export default function VisitsList() {
     </Layout>
   );
 }
+

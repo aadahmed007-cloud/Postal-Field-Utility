@@ -4,12 +4,13 @@ import { useAuth } from '../hooks/useAuth';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/errorHandlers';
-import { Users, UserPlus, Shield, User, Mail, Calendar, Search, AlertCircle, Trash2, X } from 'lucide-react';
+import { Users, UserPlus, Shield, User, Mail, Calendar, Search, AlertCircle, Trash2, X, TrendingUp, TrendingDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function StaffManagement() {
   const { user, role, loading: authLoading } = useAuth();
   const [staff, setStaff] = useState<any[]>([]);
+  const [visits, setVisits] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -23,7 +24,7 @@ export default function StaffManagement() {
     const path = 'users';
     const q = query(collection(db, path), orderBy('createdAt', 'desc'));
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeStaff = onSnapshot(q, (snapshot) => {
       setStaff(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setError(null);
     }, (err) => {
@@ -31,7 +32,18 @@ export default function StaffManagement() {
       handleFirestoreError(err, OperationType.LIST, path);
     });
 
-    return unsubscribe;
+    const visitsPath = 'offices';
+    const visitsQuery = query(collection(db, visitsPath), orderBy('createdAt', 'desc'));
+    const unsubscribeVisits = onSnapshot(visitsQuery, (snapshot) => {
+      setVisits(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => {
+      console.error(err);
+    });
+
+    return () => {
+      unsubscribeStaff();
+      unsubscribeVisits();
+    };
   }, [user, role, authLoading]);
 
   const handleManualAdd = async (e: React.FormEvent) => {
@@ -75,7 +87,21 @@ export default function StaffManagement() {
     }
   };
 
-  const filteredStaff = staff.filter(s => 
+  const filteredStaff = staff.map(s => {
+    let posCount = 0;
+    let negCount = 0;
+    
+    const countNotes = (text?: string) => {
+      if (!text) return 0;
+      return text.split('\n').filter(line => line.trim().length > 2).length || 1;
+    };
+
+    visits.filter(v => v.inspectorId === s.id).forEach(v => {
+      posCount += countNotes(v.positiveNotes);
+      negCount += countNotes(v.negativeNotes);
+    });
+    return { ...s, posCount, negCount };
+  }).filter(s => 
     s.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     s.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -146,6 +172,7 @@ export default function StaffManagement() {
                        <th className="py-5 px-8">الموظف</th>
                        <th className="py-5 px-8 text-center">تاريخ الانضمام</th>
                        <th className="py-5 px-8 text-center">الصلاحية</th>
+                       <th className="py-5 px-8 text-center">التقييم المستخلص</th>
                        <th className="py-5 px-8 text-center">الإجراءات</th>
                     </tr>
                  </thead>
@@ -193,6 +220,18 @@ export default function StaffManagement() {
                               {s.isPending && (
                                 <span className="text-[9px] text-amber-600 font-bold italic">بانتظار التفـعيل</span>
                               )}
+                           </div>
+                        </td>
+                        <td className="py-5 px-8 text-center">
+                           <div className="flex justify-center gap-3">
+                              <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100" title="ملاحظات إيجابية">
+                                 <TrendingUp className="w-3.5 h-3.5" />
+                                 <span className="text-xs font-bold">{s.posCount}</span>
+                              </div>
+                              <div className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100" title="ملاحظات سلبية">
+                                 <TrendingDown className="w-3.5 h-3.5" />
+                                 <span className="text-xs font-bold">{s.negCount}</span>
+                              </div>
                            </div>
                         </td>
                         <td className="py-5 px-8 text-center">
@@ -275,6 +314,19 @@ export default function StaffManagement() {
                          <div className="flex items-center gap-1.5 text-slate-500 font-bold">
                             <Calendar className="w-3.5 h-3.5" />
                             <span>{s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString('ar-EG') : new Date(s.createdAt).toLocaleDateString('ar-EG')}</span>
+                         </div>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/50">
+                         <span className="text-slate-400 font-bold uppercase tracking-widest text-[9px]">التقييم المستخلص</span>
+                         <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                               <TrendingUp className="w-3.5 h-3.5" />
+                               <span className="text-[10px] font-bold">{s.posCount}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100">
+                               <TrendingDown className="w-3.5 h-3.5" />
+                               <span className="text-[10px] font-bold">{s.negCount}</span>
+                            </div>
                          </div>
                       </div>
                    </div>

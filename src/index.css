@@ -10,3 +10,20 @@
     @apply bg-slate-50 text-slate-900;
   }
 }
+
+@media print {
+  nav {
+    display: none !important;
+  }
+  button {
+    display: none !important;
+  }
+  .print-hide {
+    display: none !important;
+  }
+  body, main {
+    background-color: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

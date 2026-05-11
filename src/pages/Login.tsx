@@ -30,14 +30,23 @@ export default function Login() {
         const userData = userDocSnapshot.data();
         
         // If it's a pending manual add OR a different UID (security check)
-        if (userData.isPending || userData.uid !== user.uid) {
-          await updateDoc(doc(db, 'users', userDocSnapshot.id), {
+        if (userData.isPending || userDocSnapshot.id !== user.uid) {
+          // If the document ID is different from user.uid (which happens for pending users),
+          // we need to create the correct document and delete the old one.
+          await setDoc(doc(db, 'users', user.uid), {
+            ...userData,
             uid: user.uid,
             photoURL: user.photoURL || userData.photoURL || null,
             displayName: user.displayName || userData.displayName,
             isPending: false,
             updatedAt: serverTimestamp()
           });
+
+          if (userDocSnapshot.id !== user.uid) {
+             await import('firebase/firestore').then(({ deleteDoc }) => 
+               deleteDoc(doc(db, 'users', userDocSnapshot.id))
+             );
+          }
         }
       } else if (isAdminEmail) {
         // Check if admin doc exists by UID already
